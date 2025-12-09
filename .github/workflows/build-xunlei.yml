@@ -1,4 +1,4 @@
-name: Build Xunlei for OpenWrt Multi-Arch
+name: Build Xunlei for OpenWrt Multi-Arch (Stable 24.10.3)
 
 on:
   workflow_dispatch:
@@ -26,14 +26,16 @@ jobs:
       - name: Download OpenWrt SDK
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+            SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/x86/64/openwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           else
-            SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/aarch64/generic/openwrt-sdk-24.10.4-aarch64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+            SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/aarch64/generic/openwrt-sdk-24.10.3-aarch64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           fi
 
           echo "Downloading SDK for ${{ matrix.arch }}: $SDK_URL"
-          wget -O sdk.tar.xz "$SDK_URL"
-          tar -xf sdk.tar.xz
+          wget -O sdk.tar.zst "$SDK_URL"
+          # 解压 zst 文件
+          sudo apt install -y zstd
+          tar --use-compress-program=unzstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
       - name: Clone thunder & luci-app-xunlei
@@ -85,8 +87,8 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: xunlei-openwrt-multiarch
-          name: Xunlei OpenWrt Multi-Arch Build
+          tag_name: xunlei-openwrt-24.10.3
+          name: Xunlei OpenWrt Multi-Arch Build (Stable 24.10.3)
           draft: false
           prerelease: false
           files: |
