@@ -1,38 +1,91 @@
-    - name: Detect Latest Available ImmortalWrt SDK (x86_64)
-      id: find_sdk
-      run: |
-        BASE_URL="https://downloads.immortalwrt.org/releases"
+name: Build Xunlei for ImmortalWrt x86_64
 
-        echo "Fetching release list..."
-        # 获取所有版本号
-        RELEASE_LIST=$(curl -s $BASE_URL/ | grep -oP 'href="\K[0-9.]+(?=/")' | sort -V)
+on:
+  workflow_dispatch:
 
-        echo "All releases:"
-        echo "$RELEASE_LIST"
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-        SDK_FOUND=""
-        for REL in $(echo "$RELEASE_LIST" | tac); do
-            TARGET_URL="$BASE_URL/$REL/targets/x86/64/"
-            echo "Checking SDK under $TARGET_URL"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            SDK=$(curl -s $TARGET_URL 2>/dev/null | grep -oP 'immortalwrt-sdk-[^"]+\.tar\.xz' | head -1)
+      - name: Detect Latest Available ImmortalWrt SDK (x86_64)
+        id: find_sdk
+        run: |
+          BASE_URL="https://downloads.immortalwrt.org/releases"
 
-            if [ -n "$SDK" ]; then
-                echo "Found valid SDK in release: $REL"
-                SDK_FOUND="$SDK"
-                FINAL_RELEASE="$REL"
-                FINAL_URL="$TARGET_URL$SDK"
-                break
-            fi
-        done
+          echo "Fetching release list..."
+          RELEASE_LIST=$(curl -s $BASE_URL/ | grep -oP 'href="\K[0-9.]+(?=/")' | sort -V)
 
-        if [ -z "$SDK_FOUND" ]; then
-            echo "❌ ERROR: No SDK found in any releases!"
-            exit 1
-        fi
+          echo "All releases:"
+          echo "$RELEASE_LIST"
 
-        echo "sdk_file=$SDK_FOUND"         >> $GITHUB_OUTPUT
-        echo "sdk_url=$FINAL_URL"          >> $GITHUB_OUTPUT
-        echo "release=$FINAL_RELEASE"      >> $GITHUB_OUTPUT
+          SDK_FOUND=""
+          for REL in $(echo "$RELEASE_LIST" | tac); do
+              TARGET_URL="$BASE_URL/$REL/targets/x86/64/"
+              echo "Checking SDK under $TARGET_URL"
 
-        echo "Selected SDK: $SDK_FOUND (Release: $FINAL_RELEASE)"
+              SDK=$(curl -s $TARGET_URL 2>/dev/null | grep -oP 'immortalwrt-sdk-[^"]+\.tar\.xz' | head -1)
+
+              if [ -n "$SDK" ]; then
+                  echo "Found valid SDK in release: $REL"
+                  SDK_FOUND="$SDK"
+                  FINAL_RELEASE="$REL"
+                  FINAL_URL="$TARGET_URL$SDK"
+                  break
+              fi
+          done
+
+          if [ -z "$SDK_FOUND" ]; then
+              echo "❌ ERROR: No SDK found in any releases!"
+              exit 1
+          fi
+
+          echo "sdk_file=$SDK_FOUND"        >> $GITHUB_OUTPUT
+          echo "sdk_url=$FINAL_URL"         >> $GITHUB_OUTPUT
+          echo "release=$FINAL_RELEASE"     >> $GITHUB_OUTPUT
+
+          echo "Selected SDK: $SDK_FOUND (Release: $FINAL_RELEASE)"
+
+      - name: Download SDK
+        run: |
+          wget "${{ steps.find_sdk.outputs.sdk_url }}" -O sdk.tar.xz
+          tar -xf sdk.tar.xz
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
+          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev python3-distutils \
+            rsync unzip zlib1g-dev
+
+      - name: Clone luci-app-xunlei
+        run: |
+          mkdir -p $SDK_DIR/package
+          git clone https://github.com/sbwml/luci-app-xunlei.git $SDK_DIR/package/luci-app-xunlei
+          git clone https://github.com/gngpp/thunder $SDK_DIR/package/thunder
+
+      - name: Prepare SDK
+        run: |
+          cd $SDK_DIR
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Build Packages
+        run: |
+          cd $SDK_DIR
+          make defconfig
+          make package/thunder/compile -j$(nproc) V=s
+          make package/luci-app-xunlei/compile -j$(nproc) V=s
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xunlei-ipk
+          path: |
+            ${{ env.SDK_DIR }}/bin/packages/x86_64/packages/*.ipk
+            ${{ env.SDK_DIR }}/bin/packages/x86_64/luci/*.ipk
