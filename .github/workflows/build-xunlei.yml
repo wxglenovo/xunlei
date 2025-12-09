@@ -15,17 +15,24 @@ env:
 jobs:
   linux:
     runs-on: ubuntu-latest
-    container:
-      image: docker://ghcr.io/gngpp/cargo-zigbuild:latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install cargo packages
-        run: cargo install cargo-deb --locked
-
       - name: Install dependencies
         run: |
-          apt update && apt install -y upx rename wget git
+          sudo apt update
+          sudo apt install -y curl wget git upx rename build-essential
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+          rustup default stable
+
+      - name: Install cargo-deb
+        run: |
+          source $HOME/.cargo/env
+          cargo install cargo-deb --locked
 
       - name: Get tag
         id: tag
@@ -81,8 +88,9 @@ jobs:
 
       - name: Install OpenWrt SDK
         run: |
+          mkdir -p openwrt-sdk
           wget -O openwrt-sdk.tar.xz ${{ matrix.target.sdk }}
-          tar -xf openwrt-sdk.tar.xz --strip-components=1 -C openwrt-sdk || mkdir -p openwrt-sdk && tar -xf openwrt-sdk.tar.xz -C openwrt-sdk
+          tar -xf openwrt-sdk.tar.xz -C openwrt-sdk --strip-components=1
 
       - name: Build Package
         run: |
