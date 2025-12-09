@@ -40,8 +40,12 @@ jobs:
         run: |
           echo "Downloading SDK: $SDK_URL"
           wget -O sdk.tar.zst "$SDK_URL"
-          # 修复硬链接问题，解压到 sdk/ 目录
-          tar --use-compress-program=unzstd -xf sdk.tar.zst --transform='s|^|sdk/|' --hard-dereference
+          # 解压 SDK，修复硬链接问题
+          tar --use-compress-program=unzstd -xf sdk.tar.zst --hard-dereference
+          # 找到解压目录并保存为环境变量
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
+          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+          echo "Using SDK_DIR=$SDK_DIR"
 
       - name: Fail if SDK missing
         if: steps.check_sdk.outputs.exists == 'false'
@@ -51,19 +55,19 @@ jobs:
 
       - name: Clone thunder & luci-app-xunlei
         run: |
-          cd sdk/package
+          cd $SDK_DIR/package
           git clone https://github.com/sbwml/luci-app-xunlei.git
           git clone https://github.com/gngpp/thunder.git
 
       - name: Update feeds
         run: |
-          cd sdk
+          cd $SDK_DIR
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Compile packages
         run: |
-          cd sdk
+          cd $SDK_DIR
           make defconfig
           make package/thunder/compile -j$(nproc) V=s
           make package/luci-app-xunlei/compile -j$(nproc) V=s
@@ -71,7 +75,7 @@ jobs:
       - name: Collect outputs
         run: |
           mkdir -p output/x86_64
-          find sdk/bin/packages -name "*.ipk" -exec cp {} output/x86_64/ \;
+          find $SDK_DIR/bin/packages -name "*.ipk" -exec cp {} output/x86_64/ \;
           cd output/x86_64
           zip xunlei_x86_64_packages.zip *.ipk
 
