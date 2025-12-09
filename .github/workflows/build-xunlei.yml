@@ -40,9 +40,8 @@ jobs:
         run: |
           echo "Downloading SDK: $SDK_URL"
           wget -O sdk.tar.zst "$SDK_URL"
-          # 解压 SDK，修复硬链接问题
+          # 解压 SDK 并修复硬链接问题
           tar --use-compress-program=unzstd -xf sdk.tar.zst --hard-dereference
-          # 找到解压目录并保存为环境变量
           SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
           echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
           echo "Using SDK_DIR=$SDK_DIR"
@@ -67,13 +66,13 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Set default config for compilation
+      - name: Auto-enable packages in .config
         run: |
           cd $SDK_DIR
           make defconfig
-          # 自动勾选第三方 package
-          ./scripts/feeds install luci-app-xunlei
-          ./scripts/feeds install thunder
+          # 自动在 .config 中勾选第三方 package
+          echo "CONFIG_PACKAGE_thunder=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-xunlei=y" >> .config
 
       - name: Compile packages
         run: |
