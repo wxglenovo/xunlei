@@ -27,7 +27,7 @@ jobs:
         id: sdk
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/x86/64/openwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+            SDK_URL="https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           elif [ "${{ matrix.arch }}" == "aarch64" ]; then
             SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/aarch64/generic/openwrt-sdk-24.10.3-aarch64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           else
