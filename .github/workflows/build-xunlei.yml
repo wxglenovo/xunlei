@@ -46,6 +46,7 @@ jobs:
           strip_v: true
 
       - name: Set TAG environment variable
+        shell: bash
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
             echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
@@ -53,6 +54,7 @@ jobs:
             echo "TAG=${{ steps.tag.outputs.tag }}" >> $GITHUB_ENV
           else
             echo "TAG=latest" >> $GITHUB_ENV
+          fi
 
       - name: Ensure build.sh is executable
         run: chmod +x build.sh
@@ -155,6 +157,7 @@ jobs:
         run: chmod +x build_docker.sh
 
       - name: Set TAG for Docker
+        shell: bash
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
             echo "TAG=${{ github.event.inputs.tag }}" >> $GITHUB_ENV
