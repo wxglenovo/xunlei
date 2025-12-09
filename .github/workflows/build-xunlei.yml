@@ -26,17 +26,14 @@ jobs:
       - name: Download OpenWrt SDK
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            TARGET=x86/64
+            SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
           else
-            TARGET=aarch64_generic
+            SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/aarch64/generic/openwrt-sdk-24.10.4-aarch64_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
           fi
 
-          SDK_URL=$(curl -s https://downloads.openwrt.org/releases/24.10.4/targets/$TARGET/ | \
-            grep -o "openwrt-sdk-.*-${TARGET}_gcc-.*_musl.Linux-x86_64.tar.xz" | head -1)
-
           echo "Downloading SDK for ${{ matrix.arch }}: $SDK_URL"
-          wget "https://downloads.openwrt.org/releases/24.10.4/targets/$TARGET/$SDK_URL"
-          tar -xf "$SDK_URL"
+          wget -O sdk.tar.xz "$SDK_URL"
+          tar -xf sdk.tar.xz
           mv openwrt-sdk-* sdk
 
       - name: Clone thunder & luci-app-xunlei
