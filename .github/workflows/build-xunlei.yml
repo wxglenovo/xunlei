@@ -18,10 +18,10 @@ jobs:
             gettext git libncurses5-dev libssl-dev python3 unzip zlib1g-dev \
             file wget
 
-      - name: Download OpenWrt SDK (x86_64)
+      - name: Download ImmortalWrt SDK (x86_64)
         run: |
-          wget https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.zst
-          tar -I zstd -xf immortalwrt-sdk-24.10.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.zst
+          wget https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          tar xf immortalwrt-sdk-24.10.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
           mv immortalwrt-sdk-* sdk
 
       - name: Clone luci-app-xunlei
