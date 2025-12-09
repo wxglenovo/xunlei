@@ -1,7 +1,9 @@
-name: Build Xunlei for ImmortalWrt x86_64
+name: Build Xunlei for ImmortalWrt (x86_64)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ master ]
 
 jobs:
   build:
@@ -11,81 +13,77 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect Latest Available ImmortalWrt SDK (x86_64)
-        id: find_sdk
-        run: |
-          BASE_URL="https://downloads.immortalwrt.org/releases"
-
-          echo "Fetching release list..."
-          RELEASE_LIST=$(curl -s $BASE_URL/ | grep -oP 'href="\K[0-9.]+(?=/")' | sort -V)
-
-          echo "All releases:"
-          echo "$RELEASE_LIST"
-
-          SDK_FOUND=""
-          for REL in $(echo "$RELEASE_LIST" | tac); do
-              TARGET_URL="$BASE_URL/$REL/targets/x86/64/"
-              echo "Checking SDK under $TARGET_URL"
-
-              SDK=$(curl -s $TARGET_URL 2>/dev/null | grep -oP 'immortalwrt-sdk-[^"]+\.tar\.xz' | head -1)
-
-              if [ -n "$SDK" ]; then
-                  echo "Found valid SDK in release: $REL"
-                  SDK_FOUND="$SDK"
-                  FINAL_RELEASE="$REL"
-                  FINAL_URL="$TARGET_URL$SDK"
-                  break
-              fi
-          done
-
-          if [ -z "$SDK_FOUND" ]; then
-              echo "❌ ERROR: No SDK found in any releases!"
-              exit 1
-          fi
-
-          echo "sdk_file=$SDK_FOUND"        >> $GITHUB_OUTPUT
-          echo "sdk_url=$FINAL_URL"         >> $GITHUB_OUTPUT
-          echo "release=$FINAL_RELEASE"     >> $GITHUB_OUTPUT
-
-          echo "Selected SDK: $SDK_FOUND (Release: $FINAL_RELEASE)"
-
-      - name: Download SDK
-        run: |
-          wget "${{ steps.find_sdk.outputs.sdk_url }}" -O sdk.tar.xz
-          tar -xf sdk.tar.xz
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
-          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
-
       - name: Install Dependencies
         run: |
           sudo apt update
           sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
-            g++-multilib gettext git libncurses-dev libssl-dev python3-distutils \
-            rsync unzip zlib1g-dev
+            g++-multilib gettext git libncurses-dev libssl-dev python3-setuptools \
+            python3-pip rsync unzip zlib1g-dev xz-utils
 
-      - name: Clone luci-app-xunlei
+      - name: Detect latest ImmortalWrt release
+        id: detect
         run: |
-          mkdir -p $SDK_DIR/package
-          git clone https://github.com/sbwml/luci-app-xunlei.git $SDK_DIR/package/luci-app-xunlei
-          git clone https://github.com/gngpp/thunder $SDK_DIR/package/thunder
+          BASE_URL="https://downloads.immortalwrt.org/releases"
 
-      - name: Prepare SDK
+          echo "Fetching release list ..."
+          RELEASE=$(curl -s $BASE_URL/ | grep -oE '24\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+
+          echo "Latest release: $RELEASE"
+          echo "release=$RELEASE" >> $GITHUB_OUTPUT
+
+      - name: Download SDK
         run: |
-          cd $SDK_DIR
+          RELEASE=${{ steps.detect.outputs.release }}
+          SDK_URL="https://downloads.immortalwrt.org/releases/${RELEASE}/targets/x86/64/"
+          echo "Checking SDK under $SDK_URL"
+
+          FILE=$(curl -s $SDK_URL | grep -o 'immortalwrt-sdk-.*\.tar\.xz' | head -1)
+
+          if [ -z "$FILE" ]; then
+             echo "❌ ERROR: SDK not found!"
+             exit 1
+          fi
+
+          FULL_URL="${SDK_URL}${FILE}"
+          echo "Downloading: $FULL_URL"
+
+          wget "$FULL_URL"
+          tar -xf "$FILE"
+          mv immortalwrt-sdk-* sdk
+
+      - name: Prepare Xunlei & Luci source
+        run: |
+          cd sdk/package
+          git clone https://github.com/sbwml/luci-app-xunlei.git
+          git clone https://github.com/gngpp/xunlei.git
+
+      - name: Update feeds
+        run: |
+          cd sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Build Packages
+      - name: Compile packages
         run: |
-          cd $SDK_DIR
+          cd sdk
           make defconfig
-          make package/thunder/compile -j$(nproc) V=s
-          make package/luci-app-xunlei/compile -j$(nproc) V=s
+          make package/xunlei/compile V=s
+          make package/luci-app-xunlei/compile V=s
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Collect Outputs
+        run: |
+          mkdir output
+          find sdk/bin/targets -name "*.ipk" -exec cp {} output/ \;
+          cd output
+          zip xunlei_x86_64_packages.zip *.ipk
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: xunlei-ipk
-          path: |
-            ${{ env.SDK_DIR }}/bin/packages/x86_64/packages/*.ipk
-            ${{ env.SDK_DIR }}/bin/packages/x86_64/luci/*.ipk
+          tag_name: xunlei-${{ steps.detect.outputs.release }}
+          name: Xunlei build for ImmortalWrt ${{ steps.detect.outputs.release }}
+          draft: false
+          prerelease: false
+          files: |
+            output/*.ipk
+            output/*.zip
