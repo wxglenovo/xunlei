@@ -40,7 +40,8 @@ jobs:
         run: |
           echo "Downloading SDK: $SDK_URL"
           wget -O sdk.tar.zst "$SDK_URL"
-          tar --use-compress-program=unzstd -xf sdk.tar.zst --one-top-level=sdk
+          # 修复硬链接问题，解压到 sdk/ 目录
+          tar --use-compress-program=unzstd -xf sdk.tar.zst --transform='s|^|sdk/|' --hard-dereference
 
       - name: Fail if SDK missing
         if: steps.check_sdk.outputs.exists == 'false'
