@@ -54,7 +54,6 @@ jobs:
             echo "TAG=${{ steps.tag.outputs.tag }}" >> $GITHUB_ENV
           else
             echo "TAG=latest" >> $GITHUB_ENV
-          fi
 
       - name: Build package if build.sh exists
         shell: bash
@@ -81,7 +80,7 @@ jobs:
           rm -rf target/$TARGET_ARCH/generate-rpm
 
   openwrt:
-    name: OpenWrt Package
+    name: ImmortalWrt Package
     runs-on: ubuntu-20.04
     needs: [ linux ]
     environment: OpenWrt
@@ -90,7 +89,10 @@ jobs:
       matrix:
         target:
           - arch: "x86_64"
-            sdk: "https://downloads.openwrt.org/releases/18.06.9/targets/x86/64/openwrt-sdk-18.06.9-x86-64_gcc-7.3.0_musl.Linux-x86_64.tar.xz"
+            sdk: "https://downloads.immortalwrt.org/releases/24.10.0/targets/x86/64/immortalwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          - arch: "aarch64_cortex-a72"
+            sdk: "https://downloads.immortalwrt.org/releases/24.10.0/targets/bcm27xx/bcm2711/immortalwrt-sdk-24.10.0-bcm27xx-bcm2711_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+
     steps:
       - uses: actions/checkout@v3
 
@@ -101,13 +103,13 @@ jobs:
           gettext git java-propose-classpath libelf-dev libncurses5-dev \
           libncursesw5-dev libssl-dev python2.7-dev python3 unzip wget \
           python3-distutils python3-setuptools python3-dev rsync subversion \
-          swig time xsltproc zlib1g-dev
+          swig time xsltproc zlib1g-dev zstd
 
-      - name: Install OpenWrt SDK
+      - name: Install ImmortalWrt SDK (.tar.zst)
         run: |
           mkdir -p openwrt-sdk
-          wget -O openwrt-sdk.tar.xz ${{ matrix.target.sdk }}
-          tar -xf openwrt-sdk.tar.xz -C openwrt-sdk --strip-components=1
+          wget -O sdk.tar.zst ${{ matrix.target.sdk }}
+          tar -I zstd -xvf sdk.tar.zst -C openwrt-sdk --strip-components=1
 
       - name: Build Package
         run: |
