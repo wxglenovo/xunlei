@@ -21,36 +21,68 @@ jobs:
           sudo apt update
           sudo apt install -y build-essential git subversion g++ gawk gcc-multilib \
             g++-multilib gettext libncurses5-dev libssl-dev python3-setuptools \
-            python3-pip rsync unzip zlib1g-dev xz-utils file
+            python3-pip rsync unzip zlib1g-dev xz-utils file wget zstd
 
-      - name: Download OpenWrt SDK
+      - name: Determine SDK URL
+        id: sdk
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
             SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/x86/64/openwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          else
+          elif [ "${{ matrix.arch }}" == "aarch64" ]; then
             SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/aarch64/generic/openwrt-sdk-24.10.3-aarch64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          else
+            SDK_URL=""
           fi
 
-          echo "Downloading SDK for ${{ matrix.arch }}: $SDK_URL"
-          wget -O sdk.tar.zst "$SDK_URL"
-          # 解压 zst 文件
-          sudo apt install -y zstd
+          echo "SDK_URL=$SDK_URL" >> $GITHUB_OUTPUT
+
+      - name: Check if SDK exists
+        id: check_sdk
+        run: |
+          if [ -z "${{ steps.sdk.outputs.SDK_URL }}" ]; then
+            echo "No SDK URL defined for this architecture"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          else
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.sdk.outputs.SDK_URL }}")
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "SDK exists"
+              echo "exists=true" >> $GITHUB_OUTPUT
+            else
+              echo "SDK not found (HTTP $HTTP_STATUS)"
+              echo "exists=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Download and extract SDK
+        if: steps.check_sdk.outputs.exists == 'true'
+        run: |
+          echo "Downloading SDK: ${{ steps.sdk.outputs.SDK_URL }}"
+          wget -O sdk.tar.zst "${{ steps.sdk.outputs.SDK_URL }}"
           tar --use-compress-program=unzstd -xf sdk.tar.zst
           mv openwrt-sdk-* sdk
 
+      - name: Skip if SDK missing
+        if: steps.check_sdk.outputs.exists == 'false'
+        run: |
+          echo "SDK missing for ${{ matrix.arch }}, skipping compilation."
+          exit 0
+
       - name: Clone thunder & luci-app-xunlei
+        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk/package
           git clone https://github.com/sbwml/luci-app-xunlei.git
           git clone https://github.com/gngpp/thunder.git
 
       - name: Update feeds
+        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Compile packages
+        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk
           make defconfig
@@ -58,6 +90,7 @@ jobs:
           make package/luci-app-xunlei/compile -j$(nproc) V=s
 
       - name: Collect outputs
+        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           mkdir -p output/${{ matrix.arch }}
           find sdk/bin/packages -name "*.ipk" -exec cp {} output/${{ matrix.arch }}/ \;
@@ -65,32 +98,8 @@ jobs:
           zip xunlei_${{ matrix.arch }}_packages.zip *.ipk
 
       - name: Upload artifacts
+        if: steps.check_sdk.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: xunlei-${{ matrix.arch }}
           path: output/${{ matrix.arch }}/*.zip
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: xunlei-x86_64
-          path: release/x86_64
-      - uses: actions/download-artifact@v4
-        with:
-          name: xunlei-aarch64
-          path: release/aarch64
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: xunlei-openwrt-24.10.3
-          name: Xunlei OpenWrt Multi-Arch Build (Stable 24.10.3)
-          draft: false
-          prerelease: false
-          files: |
-            release/x86_64/*.zip
-            release/aarch64/*.zip
