@@ -53,22 +53,31 @@ jobs:
           echo "SDK missing, cannot continue."
           exit 1
 
-      - name: Clone thunder & luci-app-xunlei
+      - name: Clone third-party packages
         run: |
           cd $SDK_DIR/package
           git clone https://github.com/sbwml/luci-app-xunlei.git
           git clone https://github.com/gngpp/thunder.git
 
-      - name: Update feeds
+      - name: Register third-party packages in feeds
         run: |
           cd $SDK_DIR
+          echo "src-link xunlei ./package/luci-app-xunlei" >> feeds.conf
+          echo "src-link thunder ./package/thunder" >> feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+      - name: Set default config for compilation
+        run: |
+          cd $SDK_DIR
+          make defconfig
+          # 自动勾选第三方 package
+          ./scripts/feeds install luci-app-xunlei
+          ./scripts/feeds install thunder
 
       - name: Compile packages
         run: |
           cd $SDK_DIR
-          make defconfig
           make package/thunder/compile -j$(nproc) V=s
           make package/luci-app-xunlei/compile -j$(nproc) V=s
 
