@@ -1,4 +1,4 @@
-name: Build Xunlei for OpenWrt Multi-Arch (Stable 24.10.3)
+name: Build Xunlei for OpenWrt x86_64 (Stable 24.10.3)
 
 on:
   workflow_dispatch:
@@ -8,9 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [x86_64, aarch64]
 
     steps:
       - name: Checkout
@@ -23,66 +20,47 @@ jobs:
             g++-multilib gettext libncurses5-dev libssl-dev python3-setuptools \
             python3-pip rsync unzip zlib1g-dev xz-utils file wget zstd
 
-      - name: Determine SDK URL
-        id: sdk
+      - name: Set SDK URL
         run: |
-          if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            SDK_URL="https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          elif [ "${{ matrix.arch }}" == "aarch64" ]; then
-            SDK_URL="https://downloads.openwrt.org/releases/24.10.3/targets/aarch64/generic/openwrt-sdk-24.10.3-aarch64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          else
-            SDK_URL=""
-          fi
-
-          echo "SDK_URL=$SDK_URL" >> $GITHUB_OUTPUT
+          SDK_URL="https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          echo "SDK_URL=$SDK_URL" >> $GITHUB_ENV
 
       - name: Check if SDK exists
         id: check_sdk
         run: |
-          if [ -z "${{ steps.sdk.outputs.SDK_URL }}" ]; then
-            echo "No SDK URL defined for this architecture"
-            echo "exists=false" >> $GITHUB_OUTPUT
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SDK_URL")
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.sdk.outputs.SDK_URL }}")
-            if [ "$HTTP_STATUS" -eq 200 ]; then
-              echo "SDK exists"
-              echo "exists=true" >> $GITHUB_OUTPUT
-            else
-              echo "SDK not found (HTTP $HTTP_STATUS)"
-              echo "exists=false" >> $GITHUB_OUTPUT
-            fi
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Download and extract SDK
         if: steps.check_sdk.outputs.exists == 'true'
         run: |
-          echo "Downloading SDK: ${{ steps.sdk.outputs.SDK_URL }}"
-          wget -O sdk.tar.zst "${{ steps.sdk.outputs.SDK_URL }}"
-          tar --use-compress-program=unzstd -xf sdk.tar.zst
-          mv openwrt-sdk-* sdk
+          echo "Downloading SDK: $SDK_URL"
+          wget -O sdk.tar.zst "$SDK_URL"
+          tar --use-compress-program=unzstd -xf sdk.tar.zst --one-top-level=sdk
 
-      - name: Skip if SDK missing
+      - name: Fail if SDK missing
         if: steps.check_sdk.outputs.exists == 'false'
         run: |
-          echo "SDK missing for ${{ matrix.arch }}, skipping compilation."
-          exit 0
+          echo "SDK missing, cannot continue."
+          exit 1
 
       - name: Clone thunder & luci-app-xunlei
-        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk/package
           git clone https://github.com/sbwml/luci-app-xunlei.git
           git clone https://github.com/gngpp/thunder.git
 
       - name: Update feeds
-        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
       - name: Compile packages
-        if: steps.check_sdk.outputs.exists == 'true'
         run: |
           cd sdk
           make defconfig
@@ -90,16 +68,14 @@ jobs:
           make package/luci-app-xunlei/compile -j$(nproc) V=s
 
       - name: Collect outputs
-        if: steps.check_sdk.outputs.exists == 'true'
         run: |
-          mkdir -p output/${{ matrix.arch }}
-          find sdk/bin/packages -name "*.ipk" -exec cp {} output/${{ matrix.arch }}/ \;
-          cd output/${{ matrix.arch }}
-          zip xunlei_${{ matrix.arch }}_packages.zip *.ipk
+          mkdir -p output/x86_64
+          find sdk/bin/packages -name "*.ipk" -exec cp {} output/x86_64/ \;
+          cd output/x86_64
+          zip xunlei_x86_64_packages.zip *.ipk
 
       - name: Upload artifacts
-        if: steps.check_sdk.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: xunlei-${{ matrix.arch }}
-          path: output/${{ matrix.arch }}/*.zip
+          name: xunlei-x86_64
+          path: output/x86_64/*.zip
