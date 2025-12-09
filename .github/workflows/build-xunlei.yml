@@ -6,11 +6,11 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  build-x86_64:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -20,69 +20,46 @@ jobs:
             g++-multilib gettext libncurses5-dev libssl-dev python3-setuptools \
             python3-pip rsync unzip zlib1g-dev xz-utils file wget zstd
 
-      - name: Set SDK URL
+      - name: Download ImmortalWrt SDK
         run: |
           SDK_URL="https://downloads.immortalwrt.org/releases/24.10.3/targets/x86/64/immortalwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          echo "SDK_URL=$SDK_URL" >> $GITHUB_ENV
-
-      - name: Check if SDK exists
-        id: check_sdk
-        run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SDK_URL")
-          if [ "$HTTP_STATUS" -eq 200 ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Download and extract SDK
-        if: steps.check_sdk.outputs.exists == 'true'
-        run: |
-          echo "Downloading SDK: $SDK_URL"
           wget -O sdk.tar.zst "$SDK_URL"
-          tar --use-compress-program=unzstd -xf sdk.tar.zst --hard-dereference
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
-          echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+          tar --use-compress-program=unzstd -xf sdk.tar.zst
+          mv immortalwrt-sdk-* sdk
 
-      - name: Fail if SDK missing
-        if: steps.check_sdk.outputs.exists == 'false'
+      - name: Clone thunder & luci-app-xunlei
         run: |
-          echo "SDK missing, cannot continue."
-          exit 1
-
-      - name: Clone third-party packages
-        run: |
-          cd $SDK_DIR/package
+          cd sdk/package
           git clone https://github.com/gngpp/thunder.git
           git clone https://github.com/sbwml/luci-app-xunlei.git
 
-      - name: Register third-party packages in feeds
+      - name: Register local feeds
         run: |
-          cd $SDK_DIR
+          cd sdk
+          # 添加第三方 feeds
           echo "src-link thunder ./package/thunder" >> feeds.conf
-          echo "src-link xunlei ./package/luci-app-xunlei" >> feeds.conf
+          echo "src-link luci-xunlei ./package/luci-app-xunlei" >> feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Auto-enable packages in .config
+      - name: Enable thunder & luci-app-xunlei in config
         run: |
-          cd $SDK_DIR
+          cd sdk
           make defconfig
-          sed -i '/CONFIG_PACKAGE_thunder/d' .config
-          sed -i '/CONFIG_PACKAGE_luci-app-xunlei/d' .config
+          # 勾选包
           echo "CONFIG_PACKAGE_thunder=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-xunlei=y" >> .config
 
       - name: Compile packages
         run: |
-          cd $SDK_DIR
+          cd sdk
           make package/thunder/compile -j$(nproc) V=s
           make package/luci-app-xunlei/compile -j$(nproc) V=s
 
       - name: Collect outputs
         run: |
           mkdir -p output/x86_64
-          find $SDK_DIR/bin/packages -name "*.ipk" -exec cp {} output/x86_64/ \;
+          find sdk/bin/packages -name "*.ipk" -exec cp {} output/x86_64/ \;
           cd output/x86_64
           zip xunlei_x86_64_packages.zip *.ipk
 
