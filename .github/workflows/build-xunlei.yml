@@ -1,80 +1,38 @@
-name: Build Xunlei for ImmortalWrt
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Install Dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y wget git curl python3 jq
-
-    # 自动识别 ImmortalWrt 最新版本 SDK
-    - name: Detect Latest ImmortalWrt SDK (x86_64)
+    - name: Detect Latest Available ImmortalWrt SDK (x86_64)
       id: find_sdk
       run: |
         BASE_URL="https://downloads.immortalwrt.org/releases"
 
-        echo "Fetching release list ..."
-        RELEASE=$(curl -s $BASE_URL/ | grep -oP 'href="\K[0-9.]+(?=/")' | sort -V | tail -1)
+        echo "Fetching release list..."
+        # 获取所有版本号
+        RELEASE_LIST=$(curl -s $BASE_URL/ | grep -oP 'href="\K[0-9.]+(?=/")' | sort -V)
 
-        echo "Latest release: $RELEASE"
-        echo "release=$RELEASE" >> $GITHUB_OUTPUT
+        echo "All releases:"
+        echo "$RELEASE_LIST"
 
-        TARGET_URL="$BASE_URL/$RELEASE/targets/x86/64/"
-        echo "Checking SDK under $TARGET_URL"
+        SDK_FOUND=""
+        for REL in $(echo "$RELEASE_LIST" | tac); do
+            TARGET_URL="$BASE_URL/$REL/targets/x86/64/"
+            echo "Checking SDK under $TARGET_URL"
 
-        SDK=$(curl -s $TARGET_URL | grep -oP 'immortalwrt-sdk-[^"]+\.tar\.xz' | head -1)
+            SDK=$(curl -s $TARGET_URL 2>/dev/null | grep -oP 'immortalwrt-sdk-[^"]+\.tar\.xz' | head -1)
 
-        if [ -z "$SDK" ]; then
-            echo "❌ ERROR: SDK not found!"
+            if [ -n "$SDK" ]; then
+                echo "Found valid SDK in release: $REL"
+                SDK_FOUND="$SDK"
+                FINAL_RELEASE="$REL"
+                FINAL_URL="$TARGET_URL$SDK"
+                break
+            fi
+        done
+
+        if [ -z "$SDK_FOUND" ]; then
+            echo "❌ ERROR: No SDK found in any releases!"
             exit 1
         fi
 
-        echo "Found SDK: $SDK"
+        echo "sdk_file=$SDK_FOUND"         >> $GITHUB_OUTPUT
+        echo "sdk_url=$FINAL_URL"          >> $GITHUB_OUTPUT
+        echo "release=$FINAL_RELEASE"      >> $GITHUB_OUTPUT
 
-        echo "sdk_file=$SDK" >> $GITHUB_OUTPUT
-        echo "sdk_url=$TARGET_URL$SDK" >> $GITHUB_OUTPUT
-
-    - name: Download & Extract SDK
-      run: |
-        wget -O sdk.tar.xz "${{ steps.find_sdk.outputs.sdk_url }}"
-        mkdir sdk
-        tar -xf sdk.tar.xz -C sdk --strip-components=1
-
-    - name: Clone Xunlei packages
-      run: |
-        mkdir -p sdk/package
-        cd sdk/package
-        git clone https://github.com/gngpp/xunlei.git
-        git clone https://github.com/sbwml/luci-app-xunlei.git
-
-    - name: Prepare SDK feeds
-      run: |
-        cd sdk
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-
-    - name: Build packages
-      run: |
-        cd sdk
-
-        make defconfig
-
-        make package/xunlei/compile V=s
-        make package/luci-app-xunlei/compile V=s
-
-    - name: Upload result
-      uses: actions/upload-artifact@v4
-      with:
-        name: xunlei-ipk
-        path: |
-          sdk/bin/packages/**/xunlei_*.ipk
-          sdk/bin/packages/**/luci-app-xunlei_*.ipk
+        echo "Selected SDK: $SDK_FOUND (Release: $FINAL_RELEASE)"
