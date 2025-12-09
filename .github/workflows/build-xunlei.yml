@@ -40,11 +40,9 @@ jobs:
         run: |
           echo "Downloading SDK: $SDK_URL"
           wget -O sdk.tar.zst "$SDK_URL"
-          # 解压 SDK 并修复硬链接问题
           tar --use-compress-program=unzstd -xf sdk.tar.zst --hard-dereference
           SDK_DIR=$(find . -maxdepth 1 -type d -name "immortalwrt-sdk-*")
           echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
-          echo "Using SDK_DIR=$SDK_DIR"
 
       - name: Fail if SDK missing
         if: steps.check_sdk.outputs.exists == 'false'
@@ -55,14 +53,14 @@ jobs:
       - name: Clone third-party packages
         run: |
           cd $SDK_DIR/package
-          git clone https://github.com/sbwml/luci-app-xunlei.git
           git clone https://github.com/gngpp/thunder.git
+          git clone https://github.com/sbwml/luci-app-xunlei.git
 
       - name: Register third-party packages in feeds
         run: |
           cd $SDK_DIR
-          echo "src-link xunlei ./package/luci-app-xunlei" >> feeds.conf
           echo "src-link thunder ./package/thunder" >> feeds.conf
+          echo "src-link xunlei ./package/luci-app-xunlei" >> feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -70,7 +68,8 @@ jobs:
         run: |
           cd $SDK_DIR
           make defconfig
-          # 自动在 .config 中勾选第三方 package
+          sed -i '/CONFIG_PACKAGE_thunder/d' .config
+          sed -i '/CONFIG_PACKAGE_luci-app-xunlei/d' .config
           echo "CONFIG_PACKAGE_thunder=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-xunlei=y" >> .config
 
